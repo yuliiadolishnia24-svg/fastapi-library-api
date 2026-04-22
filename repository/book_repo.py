@@ -1,23 +1,26 @@
-# repository/book_repo.py
+from sqlalchemy.orm import Session
+from models.book_model import BookDB
 from uuid import UUID
-from models.data import books_db
-from schemas.book import Book
 
 class BookRepository:
-    async def get_all(self):
-        return books_db
+    def get_all(self, db: Session, skip: int = 0, limit: int = 10):
+        # Ось тут реалізована Limit-Offset пагінація
+        return db.query(BookDB).offset(skip).limit(limit).all()
 
-    async def get_by_id(self, book_id: UUID):
-        return next((b for b in books_db if b["id"] == book_id), None)
+    def get_by_id(self, db: Session, book_id: UUID):
+        return db.query(db.query(BookDB).filter(BookDB.id == book_id).first())
 
-    async def add(self, book_data: Book):
-        books_db.append(book_data.model_dump())
-        return book_data
+    def create(self, db: Session, book_data: dict):
+        db_book = BookDB(**book_data)
+        db.add(db_book)
+        db.commit()
+        db.refresh(db_book)
+        return db_book
 
-    async def delete(self, book_id: UUID):
-        global books_db
-        index = next((i for i, b in enumerate(books_db) if b["id"] == book_id), None)
-        if index is not None:
-            books_db.pop(index)
+    def delete(self, db: Session, book_id: UUID):
+        book = db.query(BookDB).filter(BookDB.id == book_id).first()
+        if book:
+            db.delete(book)
+            db.commit()
             return True
         return False

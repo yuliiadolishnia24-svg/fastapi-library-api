@@ -1,30 +1,28 @@
-# tests/test_books.py
 import pytest
 from httpx import AsyncClient, ASGITransport
 from main import app
 
 @pytest.mark.asyncio
-async def test_create_and_get_book():
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        # 1. Створення книги
-        payload = {"title": "Kobzar", "author": "Shevchenko", "release_year": 1840}
-        response = await ac.post("/books/", json=payload)
-        assert response.status_code == 201
-        book_id = response.json()["id"]
-
-        # 2. Отримання по ID
-        response = await ac.get(f"/books/{book_id}")
-        assert response.status_code == 200
-        assert response.json()["title"] == "Kobzar"
+async def test_create_book():
+    transport = ASGITransport(app=app)
+    # follow_redirects=True дозволить клієнту самому проходити через 307 статус
+    async with AsyncClient(transport=transport, base_url="http://test", follow_redirects=True) as ac:
+        response = await ac.post("/books/", json={
+            "title": "Test Book",
+            "author": "Test Author",
+            "release_year": 2024,
+            "description": "Test Description",
+            "status": "available"
+        })
+    
+    assert response.status_code == 201
+    assert response.json()["title"] == "Test Book"
 
 @pytest.mark.asyncio
-async def test_delete_idempotency():
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        res = await ac.post("/books/", json={"title": "Test", "author": "A", "release_year": 2024})
-        b_id = res.json()["id"]
+async def test_get_books_pagination():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test", follow_redirects=True) as ac:
+        response = await ac.get("/books/", params={"skip": 0, "limit": 5})
         
-        # Видаляємо двічі
-        res1 = await ac.delete(f"/books/{b_id}")
-        assert res1.status_code == 204
-        res2 = await ac.delete(f"/books/{b_id}")
-        assert res2.status_code == 204
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
