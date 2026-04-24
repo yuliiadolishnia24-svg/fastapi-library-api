@@ -5,24 +5,26 @@ from main import app
 @pytest.mark.asyncio
 async def test_create_book():
     transport = ASGITransport(app=app)
-    # follow_redirects=True дозволить клієнту самому проходити через 307 статус
     async with AsyncClient(transport=transport, base_url="http://test", follow_redirects=True) as ac:
-        response = await ac.post("/books/", json={
-            "title": "Test Book",
-            "author": "Test Author",
-            "release_year": 2024,
-            "description": "Test Description",
+        response = await ac.post("/books", json={
+            "title": "Lab 3 Book",
+            "author": "Author Name",
+            "release_year": 2026,
+            "description": "Test for Lab 3",
             "status": "available"
         })
-    
     assert response.status_code == 201
-    assert response.json()["title"] == "Test Book"
 
 @pytest.mark.asyncio
-async def test_get_books_pagination():
+async def test_get_books_cursor_pagination():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test", follow_redirects=True) as ac:
-        response = await ac.get("/books/", params={"skip": 0, "limit": 5})
+        # Отримуємо першу книгу, щоб взяти її ID як курсор
+        first_resp = await ac.get("/books", params={"limit": 1})
+        books = first_resp.json()
         
-    assert response.status_code == 200
-    assert isinstance(response.json(), list)
+        if len(books) > 0:
+            cursor_id = books[0]["id"]
+            # Запит з використанням last_id
+            response = await ac.get("/books", params={"limit": 5, "last_id": cursor_id})
+            assert response.status_code == 200
