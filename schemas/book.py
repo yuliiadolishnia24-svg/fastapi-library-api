@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID
 
 class BookBase(BaseModel):
@@ -17,3 +17,8 @@ class Book(BookBase):
 
     class Config:
         from_attributes = True
+
+
+class BookPaginationResponse(BaseModel):
+    items: List[Book]
+    next_cursor: Optional[str] = None  # Курсор для отримання наступної сторінки

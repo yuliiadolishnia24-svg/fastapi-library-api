@@ -6,7 +6,7 @@ from uuid import UUID
 # Імпорт залежностей, моделей та схем
 from models.database import get_db
 from models.book_model import BookDB
-from schemas.book import Book, BookCreate
+from schemas.book import Book, BookCreate, BookPaginationResponse
 
 router = APIRouter()
 
@@ -19,34 +19,43 @@ def create_book(book: BookCreate, db: Session = Depends(get_db)):
     db.refresh(db_book)
     return db_book
 
-# 2. Отримання всіх книг (GET) з пагінацією, фільтрацією та сортуванням
-@router.get("", response_model=List[Book])
+# 2. Отримання всіх книг (GET) з CURSOR пагінацією та фільтрацією
+@router.get("", response_model=BookPaginationResponse)
 def get_all_books(
-    skip: int = Query(0, ge=0, description="Offset (скільки книг пропустити)"),
-    limit: int = Query(10, ge=1, le=100, description="Limit (скільки книг повернути)"),
+    limit: int = Query(10, ge=1, le=100, description="Скільки книг повернути"),
+    cursor: Optional[UUID] = Query(None, description="ID останньої книги з попередньої сторінки"),
     status: Optional[str] = Query(None, description="Фільтр за статусом (available/issued)"),
     author: Optional[str] = Query(None, description="Фільтр за автором"),
-    sort_by: Optional[str] = Query(None, description="Сортування: title або release_year"),
     db: Session = Depends(get_db)
 ):
-    query = db.query(BookDB)
+    # Починаємо базовий запит і обов'язково сортуємо за ID для стабільності курсору
+    query = db.query(BookDB).order_by(BookDB.id)
     
-    # Фільтрація (Лабораторна №1)
+    # Фільтрація (з ЛР №1)
     if status:
         query = query.filter(BookDB.status == status)
     if author:
         query = query.filter(BookDB.author.ilike(f"%{author}%"))
         
-    # Сортування (Лабораторна №1)
-    if sort_by == "title":
-        query = query.order_by(BookDB.title)
-    elif sort_by == "release_year":
-        query = query.order_by(BookDB.release_year)
-    else:
-        query = query.order_by(BookDB.id)  # сортування за замовчуванням
+    
+    # Якщо курсор передано, беремо лише записи, які йдуть ПІСЛЯ цього курсору
+    if cursor:
+        query = query.filter(BookDB.id > cursor)
         
-    # Limit-Offset пагінація (Лабораторна №2)
-    return query.offset(skip).limit(limit).all()
+    # Запитуємо на 1 елемент БІЛЬШЕ, ніж просив клієнт (limit + 1),
+    # щоб дізнатися, чи є взагалі наступна сторінка
+    books = query.limit(limit + 1).all()
+    
+    has_more = len(books) > limit
+    next_cursor = None
+    
+    if has_more:
+        # Відрізаємо той самий "+1" зайвий елемент
+        books = books[:limit]
+        # Записуємо ID останньої книги в цій сторінці як маркер (курсор) для наступної
+        next_cursor = str(books[-1].id)
+        
+    return BookPaginationResponse(items=books, next_cursor=next_cursor)
 
 # 3. Отримання книги за ID (GET)
 @router.get("/{book_id}", response_model=Book)
