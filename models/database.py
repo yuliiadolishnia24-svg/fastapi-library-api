@@ -1,16 +1,12 @@
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+import motor.motor_asyncio
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres_admin:password123@localhost:5432/library_db")
+# Беремо URL з енвайронменту Docker, або локальний за замовчуванням
+MONGO_URL = os.getenv("MONGO_URL", "mongodb://mongo_admin:password123@localhost:27017")
 
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URL)
+db = client["library_db"]
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Функція (Dependency) для отримання доступу до колекції книг
+def get_books_collection():
+    return db["books"]

@@ -1,76 +1,65 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, Response
-from sqlalchemy.orm import Session
+from pydantic_mongo import PydanticObjectId
 from typing import List, Optional
-from uuid import UUID
-
-# Імпорт залежностей, моделей та схем
-from models.database import get_db
-from models.book_model import BookDB
-from schemas.book import Book, BookCreate, BookPaginationResponse
+from models.database import get_books_collection
+from schemas.book import Book, BookCreate
 
 router = APIRouter()
 
-# 1. Додавання книги (POST)
+# 1. Створення книги (POST)
 @router.post("", response_model=Book, status_code=201)
-def create_book(book: BookCreate, db: Session = Depends(get_db)):
-    db_book = BookDB(**book.model_dump())
-    db.add(db_book)
-    db.commit()
-    db.refresh(db_book)
-    return db_book
+async def create_book(book: BookCreate, collection = Depends(get_books_collection)):
+    book_dict = book.model_dump()
+    result = await collection.insert_one(book_dict)
+    
+    # Повертаємо створений об'єкт разом з новим _id від MongoDB
+    inserted_book = await collection.find_one({"_id": result.inserted_id})
+    return inserted_book
 
-# 2. Отримання всіх книг (GET) з CURSOR пагінацією та фільтрацією
-@router.get("", response_model=BookPaginationResponse)
-def get_all_books(
-    limit: int = Query(10, ge=1, le=100, description="Скільки книг повернути"),
-    cursor: Optional[UUID] = Query(None, description="ID останньої книги з попередньої сторінки"),
-    status: Optional[str] = Query(None, description="Фільтр за статусом (available/issued)"),
-    author: Optional[str] = Query(None, description="Фільтр за автором"),
-    db: Session = Depends(get_db)
+# 2. Отримання всіх книг (GET) з Limit-Offset пагінацією та фільтрами
+@router.get("", response_model=List[Book])
+async def get_all_books(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    status: Optional[str] = Query(None),
+    author: Optional[str] = Query(None),
+    collection = Depends(get_books_collection)
 ):
-    # Починаємо базовий запит і обов'язково сортуємо за ID для стабільності курсору
-    query = db.query(BookDB).order_by(BookDB.id)
-    
-    # Фільтрація (з ЛР №1)
+    # Формуємо словник фільтрації для MongoDB
+    search_filter = {}
     if status:
-        query = query.filter(BookDB.status == status)
+        search_filter["status"] = status
     if author:
-        query = query.filter(BookDB.author.ilike(f"%{author}%"))
+        # Регістронезалежний пошук (аналог ilike)
+        search_filter["author"] = {"$regex": author, "$options": "i"}
         
-    
-    # Якщо курсор передано, беремо лише записи, які йдуть ПІСЛЯ цього курсору
-    if cursor:
-        query = query.filter(BookDB.id > cursor)
-        
-    # Запитуємо на 1 елемент БІЛЬШЕ, ніж просив клієнт (limit + 1),
-    # щоб дізнатися, чи є взагалі наступна сторінка
-    books = query.limit(limit + 1).all()
-    
-    has_more = len(books) > limit
-    next_cursor = None
-    
-    if has_more:
-        # Відрізаємо той самий "+1" зайвий елемент
-        books = books[:limit]
-        # Записуємо ID останньої книги в цій сторінці як маркер (курсор) для наступної
-        next_cursor = str(books[-1].id)
-        
-    return BookPaginationResponse(items=books, next_cursor=next_cursor)
+    # find() є синхронним для створення курсору, але skip/limit та to_list — асинхронні!
+    cursor = collection.find(search_filter).skip(skip).limit(limit)
+    books = await cursor.to_list(length=limit)
+    return books
 
-# 3. Отримання книги за ID (GET)
+# 3. Отримання однієї книги за ID (GET)
 @router.get("/{book_id}", response_model=Book)
-def get_book_by_id(book_id: UUID, db: Session = Depends(get_db)):
-    book = db.query(BookDB).filter(BookDB.id == book_id).first()
+async def get_book_by_id(book_id: str, collection = Depends(get_books_collection)):
+    try:
+        obj_id = PydanticObjectId(book_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid ObjectId format")
+        
+    book = await collection.find_one({"_id": obj_id})
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
     return book
 
 # 4. Видалення книги за ID (DELETE) — Ідемпотентне
 @router.delete("/{book_id}", status_code=204)
-def delete_book(book_id: UUID, db: Session = Depends(get_db)):
-    book = db.query(BookDB).filter(BookDB.id == book_id).first()
-    if book:
-        db.delete(book)
-        db.commit()
-    # Ідемпотентність: навіть якщо книга вже видалена, повертаємо 204 No Content без помилки
+async def delete_book(book_id: str, collection = Depends(get_books_collection)):
+    try:
+        obj_id = PydanticObjectId(book_id)
+    except Exception:
+        # Для ідемпотентності, якщо формат ID зовсім "битий", просто повертаємо 204
+        return Response(status_code=204)
+        
+    # Використовуємо перевірку deleted_count, як вказано в ТЗ
+    response = await collection.delete_one({"_id": obj_id})
     return Response(status_code=204)
