@@ -1,18 +1,14 @@
-from sqlalchemy import Column, String, Integer, Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
 import uuid
-from .database import Base
-from schemas.book import BookStatus
+from sqlalchemy import Column, String, Integer
+from sqlalchemy.dialects.postgresql import UUID
+from models.database import Base
 
 class BookDB(Base):
     __tablename__ = "books"
 
-    # Стовпці нашої таблиці в базі даних
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    title = Column(String, nullable=False)
-    author = Column(String, nullable=False)
-    description = Column(String, nullable=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    title = Column(String, index=True, nullable=False)
+    author = Column(String, index=True, nullable=False)
     release_year = Column(Integer, nullable=False)
-    
-    # Використовуємо статус із наших схем
-    status = Column(SQLEnum(BookStatus), default=BookStatus.AVAILABLE)
+    description = Column(String, nullable=True)
+    status = Column(String, index=True, default="available") # available / issued
