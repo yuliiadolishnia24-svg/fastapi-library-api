@@ -14,15 +14,14 @@ services:
 
   web:
     build: .
-    container_name: library_api_flask
+    container_name: library_api_fastapi
     ports:
       - "8000:8000"
     volumes:
       - .:/app
     environment:
       - MONGO_URL=mongodb://mongo_admin:password123@mongo_db:27017
-    # Flask за замовчуванням стартує на 5000 порту, але ми прокинемо його на 8000, щоб не міняти порти
-    command: python main.py
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       - mongo_db
 

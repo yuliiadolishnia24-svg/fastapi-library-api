@@ -3,12 +3,18 @@ from pydantic_mongo import PydanticObjectId
 from typing import List, Optional
 from models.database import get_books_collection
 from schemas.book import Book, BookCreate
+# Імпортуємо функцію перевірки токена з сервісу автентифікації
+from services.auth import get_current_user_id
 
 router = APIRouter()
 
-# 1. Створення книги (POST)
+# 1. Створення книги (POST) — ЗАХИЩЕНИЙ ЕНДПОІНТ
 @router.post("", response_model=Book, status_code=201)
-async def create_book(book: BookCreate, collection = Depends(get_books_collection)):
+async def create_book(
+    book: BookCreate, 
+    collection = Depends(get_books_collection),
+    current_user_id: str = Depends(get_current_user_id)  # Вимагає валідний Access Token
+):
     book_dict = book.model_dump()
     result = await collection.insert_one(book_dict)
     
@@ -16,7 +22,8 @@ async def create_book(book: BookCreate, collection = Depends(get_books_collectio
     inserted_book = await collection.find_one({"_id": result.inserted_id})
     return inserted_book
 
-# 2. Отримання всіх книг (GET) з Limit-Offset пагінацією та фільтрами
+
+# 2. Отримання всіх книг (GET) з Limit-Offset пагінацією та фільтрами — ВІДКРИТИЙ
 @router.get("", response_model=List[Book])
 async def get_all_books(
     skip: int = Query(0, ge=0),
@@ -25,7 +32,6 @@ async def get_all_books(
     author: Optional[str] = Query(None),
     collection = Depends(get_books_collection)
 ):
-    # Формуємо словник фільтрації для MongoDB
     search_filter = {}
     if status:
         search_filter["status"] = status
@@ -33,12 +39,12 @@ async def get_all_books(
         # Регістронезалежний пошук (аналог ilike)
         search_filter["author"] = {"$regex": author, "$options": "i"}
         
-    # find() є синхронним для створення курсору, але skip/limit та to_list — асинхронні!
     cursor = collection.find(search_filter).skip(skip).limit(limit)
     books = await cursor.to_list(length=limit)
     return books
 
-# 3. Отримання однієї книги за ID (GET)
+
+# 3. Отримання однієї книги за ID (GET) — ВІДКРИТИЙ
 @router.get("/{book_id}", response_model=Book)
 async def get_book_by_id(book_id: str, collection = Depends(get_books_collection)):
     try:
@@ -51,15 +57,19 @@ async def get_book_by_id(book_id: str, collection = Depends(get_books_collection
         raise HTTPException(status_code=404, detail="Book not found")
     return book
 
-# 4. Видалення книги за ID (DELETE) — Ідемпотентне
+
+# 4. Видалення книги за ID (DELETE) — ЗАХИЩЕНИЙ ЕНДПОІНТ
 @router.delete("/{book_id}", status_code=204)
-async def delete_book(book_id: str, collection = Depends(get_books_collection)):
+async def delete_book(
+    book_id: str, 
+    collection = Depends(get_books_collection),
+    current_user_id: str = Depends(get_current_user_id)  # Вимагає валідний Access Token
+):
     try:
         obj_id = PydanticObjectId(book_id)
     except Exception:
-        # Для ідемпотентності, якщо формат ID зовсім "битий", просто повертаємо 204
+        # Для ідемпотентності, якщо формат ID битий, повертаємо 204
         return Response(status_code=204)
         
-    # Використовуємо перевірку deleted_count, як вказано в ТЗ
     response = await collection.delete_one({"_id": obj_id})
     return Response(status_code=204)
