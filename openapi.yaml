@@ -1,0 +1,90 @@
+openapi: 3.0.3
+info:
+  title: Library Project Mock API
+  version: 1.0.0
+  description: Мок-сервер для лабораторної роботи №8 з використанням Prism
+paths:
+  /books:
+    get:
+      summary: Отримати список книг з пагінацією
+      parameters:
+        - name: skip
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Успішне отримання списку книг
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Book'
+    post:
+      summary: Додати нову книгу до бібліотеки
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookInput'
+      responses:
+        '201':
+          description: Книгу успішно створено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+              examples:
+                defaultBook:
+                  summary: Стандартний приклад відповіді
+                  value:
+                    _id: "6a0f53aaaa2e9733d3d6d08d"
+                    title: "Postgres Book"
+                    author: "John Doe"
+                    release_year: 2026
+                    status: "available"
+
+components:
+  schemas:
+    Book:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "6a0f53aaaa2e9733d3d6d08d"
+        title:
+          type: string
+          example: "Postgres Book"
+        author:
+          type: string
+          example: "John Doe"
+        release_year:
+          type: integer
+          example: 2026
+        status:
+          type: string
+          example: "available"
+    BookInput:
+      type: object
+      required:
+        - title
+        - author
+      properties:
+        title:
+          type: string
+        author:
+          type: string
+        release_year:
+          type: integer
+        status:
+          type: string
