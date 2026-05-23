@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # Наш новий mock-сервер Prism
+  # Наш mock-сервер Prism (він заміняє нам реальний бекенд для тестів)
   mock-api:
     image: stoplight/prism:5
     container_name: library_prism_mock
@@ -9,9 +9,18 @@ services:
       - "4010:4010"
     volumes:
       - ./openapi.yaml:/openapi.yaml:ro
-    # Додали прапорець --multiprocess=false в кінець команди
     command: mock -h 0.0.0.0 -p 4010 /openapi.yaml --multiprocess=false
     restart: always
 
-  # Твої попередні сервіси (FastAPI, MongoDB, Redis) можна залишити нижче, 
-  # але для ЛР8 нам потрібен саме цей mock-api сервіс.
+  # Сервіс для навантажувального тестування
+  locust:
+    image: locustio/locust
+    container_name: library_locust
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./:/mnt/locust
+    command: -f /mnt/locust/locustfile.py
+    depends_on:
+      - mock-api  # Тепер Locust знає, що треба чекати на запуск mock-api!
+    restart: always
