@@ -12,7 +12,7 @@ api = Api(app)
 swagger = Swagger(app)
 
 # Підключаємо синхронний клієнт PyMongo
-MONGO_URL = os.getenv("MONGO_URL", "mongodb://mongo_admin:password123@localhost:27017")
+MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
 client = MongoClient(MONGO_URL)
 db = client["library_db"]
 books_collection = db["books"]
