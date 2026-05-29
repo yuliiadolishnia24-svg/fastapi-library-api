@@ -1,21 +1,12 @@
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+import motor.motor_asyncio
 
-# Беремо URL з оточення або використовуємо локальний SQLite за замовчуванням
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./library.db")
+# Локальний URL без паролів за замовчуванням, або з докера
+MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
 
-if DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-else:
-    engine = create_engine(DATABASE_URL)
+client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URL)
+db = client["library_db"]
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Ця функція ОБОВ'ЯЗКОВО потрібна для endpoints.py
+def get_books_collection():
+    return db["books"]
